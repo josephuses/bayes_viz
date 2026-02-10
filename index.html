@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bayes' Theorem: Disease Screening</title>
+    
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f8; color: #333; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        
+        h1 { margin-bottom: 10px; color: #2c3e50; }
+        
+        .container { max-width: 1100px; width: 100%; display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+        
+        /* Description Box */
+        .context-box {
+            grid-column: 1 / -1;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 5px solid #3498db;
+            margin-bottom: 10px;
+        }
+        .context-title { font-weight: bold; font-size: 1.2em; margin-bottom: 10px; color: #2980b9; }
+        .variable-def { display: inline-block; background: #eef; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; margin: 0 2px; }
+
+        /* Controls */
+        .controls { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); height: fit-content; }
+        .control-group { margin-bottom: 25px; }
+        label { display: flex; justify-content: space-between; font-weight: 600; font-size: 0.95em; color: #555; margin-bottom: 5px; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        .val-display { color: #3498db; font-weight: bold; }
+
+        /* Visualization Panel */
+        .viz-panel { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); padding: 10px; min-height: 500px; position: relative; }
+        
+        /* Math Box */
+        .math-box {
+            margin-top: 20px;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+        .math-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.9em; }
+        .result-highlight { font-size: 1.3em; color: #e74c3c; font-weight: bold; text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc; }
+
+        /* D3 Elements */
+        .node circle { stroke: #fff; stroke-width: 2px; cursor: pointer; }
+        .node text { font-size: 12px; font-family: sans-serif; pointer-events: none; text-shadow: 0 1px 0 #fff; }
+        .link { fill: none; stroke-opacity: 0.6; stroke-linecap: round; transition: stroke-width 0.3s; }
+        
+        /* Tooltip */
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>Bayes' Theorem Visualizer</h1>
+
+    <div class="container">
+        
+        <div class="context-box">
+            <div class="context-title">Scenario: Medical Disease Screening</div>
+            <p>
+                We are solving for the probability that a patient <strong>actually has the disease</strong> given that they tested <strong>positive</strong>.
+                This illustrates the "Base Rate Fallacy"—why a positive result for a rare disease might still mean you are likely healthy.
+            </p>
+            <ul style="margin: 10px 0; padding-left: 20px;">
+                <li><strong>Hypothesis (\(H\)):</strong> The patient has the disease (vs. Healthy).</li>
+                <li><strong>Evidence (\(E\)):</strong> The test result is Positive (vs. Negative).</li>
+                <li><strong>Goal:</strong> Calculate \( P(Disease | Positive) \).</li>
+            </ul>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>
+                    <span>1. Prevalence \( P(H) \)</span>
+                    <span id="val_pH" class="val-display">1.0%</span>
+                </label>
+                <input type="range" id="input_pH" min="0.001" max="0.5" step="0.001" value="0.01">
+                <small style="color:#777; display:block; margin-top:2px;">How common is the disease?</small>
+            </div>
+
+            <div class="control-group">
+                <label>
+                    <span>2. Sensitivity \( P(E|H) \)</span>
+                    <span id="val_pEH" class="val-display">99.0%</span>
+                </label>
+                <input type="range" id="input_pEH" min="0.5" max="1.0" step="0.001" value="0.99">
+                <small style="color:#777; display:block; margin-top:2px;">True Positive Rate (Test accuracy if sick).</small>
+            </div>
+
+            <div class="control-group">
+                <label>
+                    <span>3. False Positive Rate \( P(E|H') \)</span>
+                    <span id="val_pEnotH" class="val-display">5.0%</span>
+                </label>
+                <input type="range" id="input_pEnotH" min="0.001" max="0.5" step="0.001" value="0.05">
+                <small style="color:#777; display:block; margin-top:2px;">Test error if healthy.</small>
+            </div>
+
+            <div class="math-box">
+                <div class="math-row">
+                    <span>True Positives (Numerator):</span>
+                    <span id="calc_num" style="color:#27ae60; font-weight:bold;">0</span>
+                </div>
+                <div class="math-row">
+                    <span>All Positives (Denominator):</span>
+                    <span id="calc_den" style="color:#2980b9; font-weight:bold;">0</span>
+                </div>
+                <div class="result-highlight">
+                    Result: <span id="final_result">0%</span>
+                </div>
+                <div style="text-align:center; font-size:0.8em; color:#777; margin-top:5px;">
+                    \( P(H|E) = \frac{True Pos}{True Pos + False Pos} \)
+                </div>
+            </div>
+        </div>
+
+        <div class="viz-panel" id="viz">
+            <div class="tooltip" id="tooltip"></div>
+        </div>
+    </div>
+
+<script>
+    // --- Setup D3 ---
+    const width = 800;
+    const height = 500;
+    const margin = { top: 20, right: 120, bottom: 20, left: 60 };
+    
+    const svg = d3.select("#viz").append("svg")
+        .attr("viewBox", `0 0 ${width} ${height}`)
+        .attr("preserveAspectRatio", "xMidYMid meet");
+    
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    const tree = d3.tree().size([height - margin.top - margin.bottom, width - margin.left - margin.right]);
+
+    // --- State Variables ---
+    let pH = 0.01;      // Prevalence
+    let pEH = 0.99;     // Sensitivity
+    let pEnotH = 0.05;  // False Positive Rate
+
+    // --- Main Update Function ---
+    function update() {
+        // 1. Logic
+        const pNotH = 1 - pH;
+        const pNotEH = 1 - pEH;        // False Negative
+        const pNotEnotH = 1 - pEnotH;  // True Negative
+
+        // Joint Probabilities (The "Flow")
+        const truePos = pH * pEH;
+        const falseNeg = pH * pNotEH;
+        const falsePos = pNotH * pEnotH;
+        const trueNeg = pNotH * pNotEnotH;
+
+        const totalPos = truePos + falsePos;
+        const posterior = truePos / totalPos;
+
+        // 2. Data Structure
+        const data = {
+            name: "Population",
+            val: 1,
+            children: [
+                {
+                    name: "Sick (H)",
+                    val: pH,
+                    color: "#e74c3c", // Red for sick
+                    children: [
+                        { name: "Pos (+)", val: pEH, joint: truePos, type: "TP", color: "#e74c3c", label: "True Positive" },
+                        { name: "Neg (-)", val: pNotEH, joint: falseNeg, type: "FN", color: "#95a5a6", label: "False Negative" }
+                    ]
+                },
+                {
+                    name: "Healthy (H')",
+                    val: pNotH,
+                    color: "#2ecc71", // Green for healthy
+                    children: [
+                        { name: "Pos (+)", val: pEnotH, joint: falsePos, type: "FP", color: "#e74c3c", label: "False Positive" },
+                        { name: "Neg (-)", val: pNotEnotH, joint: trueNeg, type: "TN", color: "#2ecc71", label: "True Negative" }
+                    ]
+                }
+            ]
+        };
+
+        // 3. Hierarchy & Layout
+        const root = d3.hierarchy(data);
+        tree(root);
+
+        // --- Drawing Links ---
+        const linkGen = d3.linkHorizontal()
+            .x(d => d.y)
+            .y(d => d.x);
+
+        const links = g.selectAll(".link")
+            .data(root.links());
+
+        links.join(
+            enter => enter.append("path")
+                .attr("class", "link")
+                .attr("d", linkGen)
+                .style("stroke-width", d => getStrokeWidth(d))
+                .style("stroke", d => d.target.data.color),
+            update => update
+                .attr("d", linkGen)
+                .style("stroke-width", d => getStrokeWidth(d))
+                .style("stroke", d => d.target.data.color)
+        );
+
+        // --- Link Labels (Probabilities) ---
+        const linkLabels = g.selectAll(".link-label")
+            .data(root.links());
+
+        linkLabels.join(
+            enter => enter.append("text")
+                .attr("class", "link-label")
+                .attr("font-size", "11px")
+                .attr("fill", "#555")
+                .attr("text-anchor", "middle")
+                .attr("dy", -5),
+            update => update
+                .attr("x", d => (d.source.y + d.target.y) / 2)
+                .attr("y", d => (d.source.x + d.target.x) / 2)
+                .text(d => {
+                    const p = d.target.data.val * 100;
+                    if(p < 0.1) return p.toFixed(2) + "%";
+                    return p.toFixed(1) + "%";
+                })
+        );
+
+        // --- Drawing Nodes ---
+        const nodes = g.selectAll(".node")
+            .data(root.descendants());
+
+        const nodeGroups = nodes.join(
+            enter => {
+                const grp = enter.append("g")
+                    .attr("class", "node")
+                    .attr("transform", d => `translate(${d.y},${d.x})`);
+                
+                grp.append("circle").attr("r", 6);
+                
+                grp.append("text")
+                    .attr("dy", -10)
+                    .attr("x", 10)
+                    .style("font-weight", "bold");
+                
+                grp.append("text")
+                    .attr("class", "subtext")
+                    .attr("dy", 14)
+                    .attr("x", 10)
+                    .attr("font-size", "10px")
+                    .attr("fill", "#666");
+
+                return grp;
+            },
+            update => update.attr("transform", d => `translate(${d.y},${d.x})`)
+        );
+
+        nodeGroups.select("circle")
+            .style("fill", d => d.data.color || "#333");
+
+        nodeGroups.select("text")
+            .text(d => d.data.name);
+
+        // Show Joint Probability on Leaf Nodes
+        nodeGroups.select(".subtext")
+            .text(d => {
+                if(d.depth === 2) {
+                    const jp = d.data.joint * 100;
+                    return `Joint: ${jp.toFixed(2)}%`;
+                }
+                return "";
+            });
+
+        // --- Update UI Text ---
+        document.getElementById('val_pH').innerText = (pH * 100).toFixed(1) + "%";
+        document.getElementById('val_pEH').innerText = (pEH * 100).toFixed(1) + "%";
+        document.getElementById('val_pEnotH').innerText = (pEnotH * 100).toFixed(1) + "%";
+
+        document.getElementById('calc_num').innerText = (truePos * 100).toFixed(4);
+        document.getElementById('calc_den').innerText = (totalPos * 100).toFixed(4);
+        
+        const finalPct = (posterior * 100).toFixed(1);
+        document.getElementById('final_result').innerText = finalPct + "%";
+        
+        // Color code result
+        const resEl = document.getElementById('final_result');
+        if(posterior < 0.5) resEl.style.color = "#e74c3c";
+        else resEl.style.color = "#27ae60";
+
+    }
+
+    function getStrokeWidth(d) {
+        // Base width on the probability flow (Joint probability)
+        let flow = 0;
+        if (d.source.depth === 0) flow = d.target.data.val; // First branch (Prior)
+        else flow = d.target.data.joint; // Second branch (Joint)
+        
+        // Scale for visibility: Min 1px, Max 25px
+        return Math.max(1, flow * 40);
+    }
+
+    // --- Listeners ---
+    document.getElementById('input_pH').addEventListener('input', (e) => { pH = parseFloat(e.target.value); update(); });
+    document.getElementById('input_pEH').addEventListener('input', (e) => { pEH = parseFloat(e.target.value); update(); });
+    document.getElementById('input_pEnotH').addEventListener('input', (e) => { pEnotH = parseFloat(e.target.value); update(); });
+
+    // Initial Run
+    update();
+
+</script>
+</body>
+</html>
